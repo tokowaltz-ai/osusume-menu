@@ -121,9 +121,9 @@ textarea.finput{resize:none;height:90px;line-height:1.7}
     </div>
     <div class="header-date" id="today-date"></div>
   </div>
-  <div class="tab-bar">
+  <div class="tab-bar" id="tab-bar">
     <div class="tab active" data-tab="menu">メニュー表示</div>
-    <div class="tab" data-tab="admin">⚙ 管理・設定</div>
+    <div class="tab" data-tab="admin" id="tab-admin">⚙ 管理・設定</div>
   </div>
   <div class="view menu-view active" id="view-menu">
     <div class="loading" id="menu-loading">読み込み中...</div>
@@ -190,13 +190,13 @@ import { getStorage, ref as sref, uploadBytesResumable, getDownloadURL, deleteOb
 // ★ ここにFirebaseの設定を貼り付けてください
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDBRbrhM7eP7OSuofNQr1AcF4GFb-Gvl1Y",
-  authDomain: "osusume-menu-26fbf.firebaseapp.com",
-  databaseURL: "https://osusume-menu-26fbf-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "osusume-menu-26fbf",
-  storageBucket: "osusume-menu-26fbf.firebasestorage.app",
-  messagingSenderId: "346078919165",
-  appId: "1:346078919165:web:0d125a878698279e7c8194"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 // ============================================================
 
@@ -204,6 +204,12 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const storage = getStorage(app);
 const menuRef = ref(db, 'menu');
+
+// ?admin がURLにない場合は管理タブを非表示
+const isAdmin = location.search.includes('admin');
+if(!isAdmin){
+  document.getElementById('tab-admin').style.display='none';
+}
 
 let items = [];       // {key, name, price, desc, imgUrl, imgPath}
 let editKey = null;
