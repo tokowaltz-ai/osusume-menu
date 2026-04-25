@@ -110,6 +110,21 @@ textarea.finput{resize:none;height:90px;line-height:1.7}
 
 /* ローディング */
 .loading{text-align:center;padding:40px;color:var(--muted);font-size:14px}
+
+/* ===== 画像編集オーバーレイ ===== */
+.crop-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:300;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .25s}
+.crop-overlay.open{opacity:1;pointer-events:all}
+.crop-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;color:#fff;flex-shrink:0}
+.crop-title{font-size:15px;font-weight:500}
+.crop-cancel{background:none;border:none;color:#aaa;font-size:14px;cursor:pointer;padding:4px 8px}
+.crop-area{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+#crop-canvas{max-width:100%;max-height:100%;touch-action:none}
+.crop-tools{display:flex;align-items:center;justify-content:center;gap:16px;padding:16px;flex-shrink:0}
+.crop-btn{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;padding:10px 20px;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;display:flex;align-items:center;gap:6px}
+.crop-btn:active{background:rgba(255,255,255,.25)}
+.crop-done{background:var(--red);border:none;color:#fff;border-radius:10px;padding:10px 28px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif}
+.crop-done:active{background:var(--red-dark)}
+.crop-hint{color:#888;font-size:11px;text-align:center;padding:0 16px 8px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -184,6 +199,23 @@ textarea.finput{resize:none;height:90px;line-height:1.7}
   </div>
 </div>
 
+<!-- 画像編集オーバーレイ -->
+<div class="crop-overlay" id="crop-overlay">
+  <div class="crop-header">
+    <div class="crop-title">✂️ 写真を編集</div>
+    <button class="crop-cancel" onclick="closeCrop()">キャンセル</button>
+  </div>
+  <div class="crop-area">
+    <canvas id="crop-canvas"></canvas>
+  </div>
+  <div class="crop-hint">ピンチで拡大縮小・ドラッグで位置調整</div>
+  <div class="crop-tools">
+    <button class="crop-btn" onclick="rotateCrop(-90)">↺ 左回転</button>
+    <button class="crop-btn" onclick="rotateCrop(90)">↻ 右回転</button>
+    <button class="crop-done" onclick="applyCrop()">決定</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Firebase SDK -->
@@ -196,13 +228,13 @@ import { getStorage, ref as sref, uploadBytesResumable, getDownloadURL, deleteOb
 // ★ ここにFirebaseの設定を貼り付けてください
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDBRbrhM7eP7OSuofNQr1AcF4GFb-Gvl1Y",
-  authDomain: "osusume-menu-26fbf.firebaseapp.com",
-  databaseURL: "https://osusume-menu-26fbf-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "osusume-menu-26fbf",
-  storageBucket: "osusume-menu-26fbf.firebasestorage.app",
-  messagingSenderId: "346078919165",
-  appId: "1:346078919165:web:0d125a878698279e7c8194"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 // ============================================================
 
@@ -344,15 +376,129 @@ window.deleteItem=async function(key,imgPath){
   }catch(e){ showToast('削除に失敗しました'); }
 };
 
-// 画像選択
+// 画像選択 → クロップ画面へ
 window.onImgSelect=function(e){
   const file=e.target.files[0];
   if(!file)return;
-  pendingFile=file;
-  const url=URL.createObjectURL(file);
-  pendingPreviewUrl=url;
-  showImgPreview(url);
+  const reader=new FileReader();
+  reader.onload=ev=>openCrop(ev.target.result);
+  reader.readAsDataURL(file);
 };
+
+// ===== クロップ機能 =====
+let cropState={img:null,x:0,y:0,scale:1,rotation:0,dragging:false,lastX:0,lastY:0,pinchDist:0,lastScale:1};
+
+function openCrop(dataUrl){
+  const overlay=document.getElementById('crop-overlay');
+  const canvas=document.getElementById('crop-canvas');
+  const img=new Image();
+  img.onload=()=>{
+    cropState.img=img;
+    cropState.rotation=0;
+    cropState.scale=1;
+    cropState.x=0;
+    cropState.y=0;
+    // canvasサイズ設定
+    const maxW=window.innerWidth;
+    const maxH=window.innerHeight*0.6;
+    const ratio=Math.min(maxW/img.width, maxH/img.height);
+    canvas.width=Math.round(img.width*ratio);
+    canvas.height=Math.round(img.height*ratio);
+    cropState.baseW=canvas.width;
+    cropState.baseH=canvas.height;
+    drawCrop();
+    overlay.classList.add('open');
+    bindCropEvents(canvas);
+  };
+  img.src=dataUrl;
+}
+
+function drawCrop(){
+  const canvas=document.getElementById('crop-canvas');
+  const ctx=canvas.getContext('2d');
+  const {img,x,y,scale,rotation,baseW,baseH}=cropState;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width/2+x, canvas.height/2+y);
+  ctx.rotate(rotation*Math.PI/180);
+  ctx.scale(scale,scale);
+  // 回転に応じてw/hを入れ替え
+  const rad=Math.abs(rotation%180);
+  const sw= (rad===90) ? baseH : baseW;
+  const sh= (rad===90) ? baseW : baseH;
+  ctx.drawImage(img,-sw/2,-sh/2,sw,sh);
+  ctx.restore();
+}
+
+function rotateCrop(deg){
+  cropState.rotation=(cropState.rotation+deg+360)%360;
+  drawCrop();
+}
+
+function bindCropEvents(canvas){
+  // タッチ
+  canvas.ontouchstart=e=>{
+    if(e.touches.length===1){
+      cropState.dragging=true;
+      cropState.lastX=e.touches[0].clientX;
+      cropState.lastY=e.touches[0].clientY;
+    } else if(e.touches.length===2){
+      cropState.pinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      cropState.lastScale=cropState.scale;
+    }
+    e.preventDefault();
+  };
+  canvas.ontouchmove=e=>{
+    if(e.touches.length===1&&cropState.dragging){
+      cropState.x+=e.touches[0].clientX-cropState.lastX;
+      cropState.y+=e.touches[0].clientY-cropState.lastY;
+      cropState.lastX=e.touches[0].clientX;
+      cropState.lastY=e.touches[0].clientY;
+      drawCrop();
+    } else if(e.touches.length===2){
+      const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      cropState.scale=Math.min(4,Math.max(0.3,cropState.lastScale*(dist/cropState.pinchDist)));
+      drawCrop();
+    }
+    e.preventDefault();
+  };
+  canvas.ontouchend=e=>{ cropState.dragging=false; };
+  // マウス（PC対応）
+  canvas.onmousedown=e=>{ cropState.dragging=true; cropState.lastX=e.clientX; cropState.lastY=e.clientY; };
+  canvas.onmousemove=e=>{ if(!cropState.dragging)return; cropState.x+=e.clientX-cropState.lastX; cropState.y+=e.clientY-cropState.lastY; cropState.lastX=e.clientX; cropState.lastY=e.clientY; drawCrop(); };
+  canvas.onmouseup=()=>{ cropState.dragging=false; };
+  canvas.onwheel=e=>{ cropState.scale=Math.min(4,Math.max(0.3,cropState.scale*(e.deltaY<0?1.1:0.9))); drawCrop(); e.preventDefault(); };
+}
+
+function applyCrop(){
+  const srcCanvas=document.getElementById('crop-canvas');
+  // 出力用canvas（正方形 600x600）
+  const out=document.createElement('canvas');
+  out.width=600; out.height=600;
+  const ctx=out.getContext('2d');
+  // srcCanvasの中央600x600をコピー（スマホ画面サイズに合わせてスケール）
+  const sx=(srcCanvas.width-600)/2;
+  const sy=(srcCanvas.height-600)/2;
+  if(srcCanvas.width>=600&&srcCanvas.height>=600){
+    ctx.drawImage(srcCanvas,sx,sy,600,600,0,0,600,600);
+  } else {
+    // 小さい場合はそのまま全体をfit
+    ctx.drawImage(srcCanvas,0,0,srcCanvas.width,srcCanvas.height,0,0,600,600);
+  }
+  const dataUrl=out.toDataURL('image/jpeg',0.85);
+  // base64→Blobに変換してpendingFileとして扱う
+  const arr=dataUrl.split(','), mime=arr[0].match(/:(.*?);/)[1];
+  const bstr=atob(arr[1]); let n=bstr.length; const u8=new Uint8Array(n);
+  while(n--){u8[n]=bstr.charCodeAt(n);}
+  pendingFile=new Blob([u8],{type:mime});
+  pendingFile.name='cropped.jpg';
+  showImgPreview(dataUrl);
+  closeCrop();
+}
+
+function closeCrop(){
+  document.getElementById('crop-overlay').classList.remove('open');
+}
 
 window.removeImg=function(e){
   e.stopPropagation();
