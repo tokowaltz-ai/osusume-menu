@@ -205,8 +205,8 @@ textarea.finput{resize:none;height:90px;line-height:1.7}
     <div class="crop-title">✂️ 写真を編集</div>
     <button class="crop-cancel" onclick="closeCrop()">キャンセル</button>
   </div>
-  <div class="crop-area">
-    <canvas id="crop-canvas"></canvas>
+  <div class="crop-area" id="crop-area">
+    <img id="crop-img" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;touch-action:none;user-select:none">
   </div>
   <div class="crop-hint">ピンチで拡大縮小・ドラッグで位置調整</div>
   <div class="crop-tools">
@@ -228,13 +228,13 @@ import { getStorage, ref as sref, uploadBytesResumable, getDownloadURL, deleteOb
 // ★ ここにFirebaseの設定を貼り付けてください
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDBRbrhM7eP7OSuofNQr1AcF4GFb-Gvl1Y",
-  authDomain: "osusume-menu-26fbf.firebaseapp.com",
-  databaseURL: "https://osusume-menu-26fbf-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "osusume-menu-26fbf",
-  storageBucket: "osusume-menu-26fbf.firebasestorage.app",
-  messagingSenderId: "346078919165",
-  appId: "1:346078919165:web:0d125a878698279e7c8194"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 // ============================================================
 
@@ -385,102 +385,49 @@ window.onImgSelect=function(e){
   reader.readAsDataURL(file);
 };
 
-// ===== クロップ機能 =====
-let cropState={img:null,x:0,y:0,scale:1,rotation:0,dragging:false,lastX:0,lastY:0,pinchDist:0,lastScale:1,origDataUrl:null};
+// ===== クロップ機能（img transform方式）=====
+let cropRot=0;
+let cropOrigDataUrl=null;
 
 function openCrop(dataUrl){
-  const overlay=document.getElementById('crop-overlay');
-  const canvas=document.getElementById('crop-canvas');
-  const img=new Image();
-  img.onload=()=>{
-    cropState.img=img;
-    cropState.origDataUrl=dataUrl;
-    cropState.rotation=0;
-    cropState.scale=1;
-    cropState.x=0;
-    cropState.y=0;
-    const size=Math.min(window.innerWidth, window.innerHeight*0.62);
-    canvas.width=size;
-    canvas.height=size;
-    drawCrop();
-    overlay.classList.add('open');
-    bindCropEvents(canvas);
-  };
+  cropRot=0;
+  cropOrigDataUrl=dataUrl;
+  const img=document.getElementById('crop-img');
   img.src=dataUrl;
-}
-
-function drawCrop(){
-  const canvas=document.getElementById('crop-canvas');
-  const ctx=canvas.getContext('2d');
-  const {img,x,y,scale,rotation}=cropState;
-  const cw=canvas.width, ch=canvas.height;
-  ctx.clearRect(0,0,cw,ch);
-  ctx.save();
-  ctx.translate(cw/2+x, ch/2+y);
-  ctx.rotate(rotation*Math.PI/180);
-  ctx.scale(scale,scale);
-  // 回転に応じてfitサイズを計算
-  const isSwapped=(rotation===90||rotation===270);
-  const iw=isSwapped?img.height:img.width;
-  const ih=isSwapped?img.width:img.height;
-  const fit=Math.min(cw/iw, ch/ih);
-  const dw=img.width*fit, dh=img.height*fit;
-  ctx.drawImage(img,-dw/2,-dh/2,dw,dh);
-  ctx.restore();
+  img.style.transform='rotate(0deg)';
+  document.getElementById('crop-overlay').classList.add('open');
 }
 
 function rotateCrop(deg){
-  cropState.rotation=((cropState.rotation+deg)%360+360)%360;
-  cropState.x=0;
-  cropState.y=0;
-  drawCrop();
-}
-
-function bindCropEvents(canvas){
-  canvas.ontouchstart=e=>{
-    if(e.touches.length===1){
-      cropState.dragging=true;
-      cropState.lastX=e.touches[0].clientX;
-      cropState.lastY=e.touches[0].clientY;
-    } else if(e.touches.length===2){
-      cropState.dragging=false;
-      cropState.pinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      cropState.lastScale=cropState.scale;
-    }
-    e.preventDefault();
-  };
-  canvas.ontouchmove=e=>{
-    if(e.touches.length===1&&cropState.dragging){
-      cropState.x+=e.touches[0].clientX-cropState.lastX;
-      cropState.y+=e.touches[0].clientY-cropState.lastY;
-      cropState.lastX=e.touches[0].clientX;
-      cropState.lastY=e.touches[0].clientY;
-      drawCrop();
-    } else if(e.touches.length===2){
-      const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-      cropState.scale=Math.min(4,Math.max(0.3,cropState.lastScale*(dist/cropState.pinchDist)));
-      drawCrop();
-    }
-    e.preventDefault();
-  };
-  canvas.ontouchend=()=>{ cropState.dragging=false; };
-  canvas.onmousedown=e=>{ cropState.dragging=true; cropState.lastX=e.clientX; cropState.lastY=e.clientY; };
-  canvas.onmousemove=e=>{ if(!cropState.dragging)return; cropState.x+=e.clientX-cropState.lastX; cropState.y+=e.clientY-cropState.lastY; cropState.lastX=e.clientX; cropState.lastY=e.clientY; drawCrop(); };
-  canvas.onmouseup=()=>{ cropState.dragging=false; };
-  canvas.onwheel=e=>{ cropState.scale=Math.min(4,Math.max(0.3,cropState.scale*(e.deltaY<0?1.1:0.9))); drawCrop(); e.preventDefault(); };
+  cropRot=(cropRot+deg+360)%360;
+  document.getElementById('crop-img').style.transform=`rotate(${cropRot}deg)`;
 }
 
 function applyCrop(){
-  const srcCanvas=document.getElementById('crop-canvas');
-  const size=600;
+  // offscreen canvasで回転済み画像を生成
+  const img=document.getElementById('crop-img');
+  const size=800;
   const out=document.createElement('canvas');
+  const isSwapped=(cropRot===90||cropRot===270);
   out.width=size; out.height=size;
   const ctx=out.getContext('2d');
-  const sc=size/srcCanvas.width;
-  ctx.drawImage(srcCanvas,0,0,srcCanvas.width,srcCanvas.height,0,0,size,size);
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,size,size);
+  ctx.save();
+  ctx.translate(size/2, size/2);
+  ctx.rotate(cropRot*Math.PI/180);
+  // 回転後にfitするサイズを計算
+  const iw=isSwapped?img.naturalHeight:img.naturalWidth;
+  const ih=isSwapped?img.naturalWidth:img.naturalHeight;
+  const fit=Math.min(size/iw, size/ih);
+  const dw=img.naturalWidth*fit;
+  const dh=img.naturalHeight*fit;
+  ctx.drawImage(img,-dw/2,-dh/2,dw,dh);
+  ctx.restore();
   const dataUrl=out.toDataURL('image/jpeg',0.88);
-  const arr=dataUrl.split(','), mime=arr[0].match(/:(.*?);/)[1];
-  const bstr=atob(arr[1]); let n=bstr.length; const u8=new Uint8Array(n);
+  // File化
+  const arr=dataUrl.split(','),mime=arr[0].match(/:(.*?);/)[1];
+  const bstr=atob(arr[1]);let n=bstr.length;const u8=new Uint8Array(n);
   while(n--){u8[n]=bstr.charCodeAt(n);}
   pendingFile=new File([u8],'cropped.jpg',{type:mime});
   showImgPreview(dataUrl);
