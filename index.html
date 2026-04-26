@@ -228,13 +228,13 @@ import { getStorage, ref as sref, uploadBytesResumable, getDownloadURL, deleteOb
 // ★ ここにFirebaseの設定を貼り付けてください
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDBRbrhM7eP7OSuofNQr1AcF4GFb-Gvl1Y",
-  authDomain: "osusume-menu-26fbf.firebaseapp.com",
-  databaseURL: "https://osusume-menu-26fbf-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "osusume-menu-26fbf",
-  storageBucket: "osusume-menu-26fbf.firebasestorage.app",
-  messagingSenderId: "346078919165",
-  appId: "1:346078919165:web:0d125a878698279e7c8194"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 // ============================================================
 
@@ -416,22 +416,25 @@ function openCrop(dataUrl){
 function drawCrop(){
   const canvas=document.getElementById('crop-canvas');
   const ctx=canvas.getContext('2d');
-  const {img,x,y,scale,rotation,baseW,baseH}=cropState;
+  const {img,x,y,scale,rotation}=cropState;
+  // 回転角に応じてcanvasサイズを切り替え
+  const isSwapped=(Math.abs(rotation)===90||Math.abs(rotation)===270);
+  const bw=cropState.baseW, bh=cropState.baseH;
+  canvas.width = isSwapped ? bh : bw;
+  canvas.height= isSwapped ? bw : bh;
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.save();
   ctx.translate(canvas.width/2+x, canvas.height/2+y);
   ctx.rotate(rotation*Math.PI/180);
   ctx.scale(scale,scale);
-  // 回転に応じてw/hを入れ替え
-  const rad=Math.abs(rotation%180);
-  const sw= (rad===90) ? baseH : baseW;
-  const sh= (rad===90) ? baseW : baseH;
-  ctx.drawImage(img,-sw/2,-sh/2,sw,sh);
+  ctx.drawImage(img,-bw/2,-bh/2,bw,bh);
   ctx.restore();
 }
 
 function rotateCrop(deg){
-  cropState.rotation=(cropState.rotation+deg+360)%360;
+  cropState.rotation=((cropState.rotation+deg)%360+360)%360;
+  cropState.x=0;
+  cropState.y=0;
   drawCrop();
 }
 
@@ -472,26 +475,24 @@ function bindCropEvents(canvas){
 
 function applyCrop(){
   const srcCanvas=document.getElementById('crop-canvas');
-  // 出力用canvas（正方形 600x600）
+  const size=600;
   const out=document.createElement('canvas');
-  out.width=600; out.height=600;
+  out.width=size; out.height=size;
   const ctx=out.getContext('2d');
-  // srcCanvasの中央600x600をコピー（スマホ画面サイズに合わせてスケール）
-  const sx=(srcCanvas.width-600)/2;
-  const sy=(srcCanvas.height-600)/2;
-  if(srcCanvas.width>=600&&srcCanvas.height>=600){
-    ctx.drawImage(srcCanvas,sx,sy,600,600,0,0,600,600);
+  // srcCanvasの中央をsize×sizeで切り出す
+  const sx=(srcCanvas.width-size)/2;
+  const sy=(srcCanvas.height-size)/2;
+  if(srcCanvas.width>=size&&srcCanvas.height>=size){
+    ctx.drawImage(srcCanvas,sx,sy,size,size,0,0,size,size);
   } else {
-    // 小さい場合はそのまま全体をfit
-    ctx.drawImage(srcCanvas,0,0,srcCanvas.width,srcCanvas.height,0,0,600,600);
+    ctx.drawImage(srcCanvas,0,0,srcCanvas.width,srcCanvas.height,0,0,size,size);
   }
   const dataUrl=out.toDataURL('image/jpeg',0.85);
-  // base64→Blobに変換してpendingFileとして扱う
+  // Blob→Fileオブジェクトに変換（nameプロパティが必要）
   const arr=dataUrl.split(','), mime=arr[0].match(/:(.*?);/)[1];
   const bstr=atob(arr[1]); let n=bstr.length; const u8=new Uint8Array(n);
   while(n--){u8[n]=bstr.charCodeAt(n);}
-  pendingFile=new Blob([u8],{type:mime});
-  pendingFile.name='cropped.jpg';
+  pendingFile=new File([u8],'cropped.jpg',{type:mime});
   showImgPreview(dataUrl);
   closeCrop();
 }
