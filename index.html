@@ -24,6 +24,7 @@ html,body{height:100%;font-family:'Noto Sans JP',sans-serif;background:var(--bg)
 .view{display:none;flex-direction:column;flex:1;overflow-y:auto}
 .view.active{display:flex}
 .menu-view{padding:16px;gap:16px}
+#menu-list{display:flex;flex-direction:column;gap:16px}
 .menu-empty{text-align:center;padding:60px 24px;color:var(--muted)}
 .menu-empty .icon{font-size:52px;margin-bottom:14px}
 .menu-empty p{font-size:14px;line-height:1.8}
@@ -124,7 +125,7 @@ textarea.finput{resize:none;height:90px;line-height:1.7}
   </div>
   <div class="view menu-view active" id="view-menu">
     <div class="loading" id="menu-loading">読み込み中...</div>
-    <div id="menu-list" style="display:none;flex-direction:column;gap:16px"></div>
+    <div id="menu-list" style="display:none"></div>
   </div>
   <div class="view admin-view" id="view-admin">
     <div class="section-label">本日のおすすめ（最大3品）</div>
@@ -204,13 +205,13 @@ import { getStorage, ref as sref, uploadBytesResumable, getDownloadURL, deleteOb
 // ★ ここにFirebaseの設定を貼り付けてください
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDBRbrhM7eP7OSuofNQr1AcF4GFb-Gvl1Y",
-  authDomain: "osusume-menu-26fbf.firebaseapp.com",
-  databaseURL: "https://osusume-menu-26fbf-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "osusume-menu-26fbf",
-  storageBucket: "osusume-menu-26fbf.firebasestorage.app",
-  messagingSenderId: "346078919165",
-  appId: "1:346078919165:web:0d125a878698279e7c8194"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.firebasestorage.app",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 // ============================================================
 
@@ -230,7 +231,7 @@ document.getElementById('today-date').textContent=today();
 // 5秒後に強制的に読み込み中を消す（接続失敗時の保険）
 setTimeout(()=>{
   document.getElementById('menu-loading').style.display='none';
-  document.getElementById('menu-list').style.display='flex';
+  document.getElementById('menu-list').style.display='block';
   if(!items.length) renderMenu();
 }, 5000);
 
@@ -252,13 +253,13 @@ onValue(menuRef, snap=>{
   items=[];
   if(snap.exists()) snap.forEach(c=>items.push({key:c.key,...c.val()}));
   document.getElementById('menu-loading').style.display='none';
-  document.getElementById('menu-list').style.display='flex';
+  const menuList = document.getElementById('menu-list');
+  menuList.style.display='block';
   renderMenu();
   renderAdmin();
 }, err=>{
-  // エラー時も読み込み中を消す
   document.getElementById('menu-loading').style.display='none';
-  document.getElementById('menu-list').style.display='flex';
+  document.getElementById('menu-list').style.display='block';
   renderMenu();
 });
 
